@@ -1,11 +1,13 @@
 name: ai-crm
+
 services:
   backend:
     build:
       context: .
       target: backend
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
     environment:
       CRM_DB_URL: sqlite:////app/data/crm.db
       RAG_INDEX_DIR: /app/data/rag_index
@@ -14,60 +16,46 @@ services:
     volumes:
       - crm_data:/app/data
       - hf_cache:/home/app/.cache/huggingface
-    networks: [crm_internal, traefik_proxy]
-    expose: ["8000"]
+    networks:
+      - crm_internal
+    ports:
+      - "127.0.0.1:8001:8000"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 120s
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=${TRAEFIK_NETWORK}
-      - traefik.http.routers.crm-api.rule=Host(`${CRM_DOMAIN}`) && PathPrefix(`/api`)
-      - traefik.http.routers.crm-api.entrypoints=websecure
-      - traefik.http.routers.crm-api.tls=true
-      - traefik.http.routers.crm-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
-      - traefik.http.routers.crm-api.priority=100
-      - traefik.http.routers.crm-api.middlewares=crm-api-strip
-      - traefik.http.middlewares.crm-api-strip.stripprefix.prefixes=/api
-      - traefik.http.services.crm-api.loadbalancer.server.port=8000
+
   frontend:
     build:
       context: .
       target: frontend
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
     environment:
       API_URL: http://backend:8000
-      PUBLIC_API_URL: https://${CRM_DOMAIN}/api
+      PUBLIC_API_URL: https://${CRM_DOMAIN:?Set CRM_DOMAIN in .env}/api
     depends_on:
       backend:
         condition: service_healthy
-    networks: [crm_internal, traefik_proxy]
-    expose: ["8501"]
+    networks:
+      - crm_internal
+    ports:
+      - "127.0.0.1:8502:8501"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8501/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=${TRAEFIK_NETWORK}
-      - traefik.http.routers.crm-ui.rule=Host(`${CRM_DOMAIN}`)
-      - traefik.http.routers.crm-ui.entrypoints=websecure
-      - traefik.http.routers.crm-ui.tls=true
-      - traefik.http.routers.crm-ui.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
-      - traefik.http.routers.crm-ui.priority=10
-      - traefik.http.services.crm-ui.loadbalancer.server.port=8501
+
 networks:
   crm_internal:
-    internal: true
-  traefik_proxy:
-    external: true
-    name: ${TRAEFIK_NETWORK}
+    driver: bridge
+
 volumes:
   crm_data:
   hf_cache:
+
